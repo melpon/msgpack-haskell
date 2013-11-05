@@ -15,18 +15,22 @@ import qualified Data.Text.Lazy.IO as LT
 import Text.Shakespeare.Text
 
 import Language.MessagePack.IDL.Syntax as MP
+import Language.MessagePack.IDL.Internal (withDirectory)
+import qualified System.FilePath as Path
 
 data Config
   = Config
     { configFilePath :: FilePath
+    , configModuleName :: String
     }
 
 generate :: Config -> Spec -> IO ()
 generate Config {..} spec = do
-  LT.writeFile "Types.hs" [lt|
+  withModule configModuleName $ \toModuleName -> do
+    LT.writeFile "Types.hs" [lt|
 {-# LANGUAGE TemplateHaskell #-}
 
-module Types where
+module #{toModuleName "Types"} where
 
 import Data.Int
 import Data.MessagePack
@@ -36,11 +40,12 @@ import Data.Words
 #{LT.concat $ map genTypeDecl spec}
 |]
 
-  LT.writeFile "Server.hs" [lt|
+    LT.writeFile "Server.hs" [lt|
+module #{toModuleName "Server"} where
 |]
 
-  LT.writeFile "Client.hs" [lt|
-module Server where
+    LT.writeFile "Client.hs" [lt|
+module #{toModuleName "Client"} where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -54,6 +59,28 @@ import qualified Network.MessagePackRpc.Client as MP
 import Types
 #{LT.concat $ map genClient spec}
 |]
+
+withModule :: String -> ((String -> String) -> IO a) -> IO a
+withModule moduleName io =
+    if null cleanedModuleNames
+      then io id
+      else withDirectory modulePath (io concatModule)
+  where
+    cleanedModuleNames =
+        let moduleNames = T.splitOn "." (T.pack moduleName)
+            filteredModules = map cond moduleNames
+            removedEmptyModules = filter (not . T.null) filteredModules
+            upperModules = map upper removedEmptyModules
+         in map T.unpack upperModules
+        where
+            validName c =
+                'a' <= c && c <= 'z' ||
+                'A' <= c && c <= 'Z' ||
+                '0' <= c && c <= '9'
+            cond m = T.filter validName m
+            upper m = (T.map toUpper $ T.take 1 m) `mappend` T.drop 1 m
+    concatModule file = concat (map (\m -> m ++ ".") cleanedModuleNames) ++ file
+    modulePath = Path.joinPath cleanedModuleNames
 
 genClient :: Decl -> LT.Text
 genClient MPService {..} =

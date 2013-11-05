@@ -116,7 +116,7 @@ compile conf = do
             Cpp.generate (Cpp.Config filepath namespace pficommon) spec
           
           Haskell {..} -> do
-            Haskell.generate (Haskell.Config filepath) spec
+            Haskell.generate (Haskell.Config filepath module_name) spec
         
           Java {..} -> do
             Java.generate (Java.Config filepath package) spec
