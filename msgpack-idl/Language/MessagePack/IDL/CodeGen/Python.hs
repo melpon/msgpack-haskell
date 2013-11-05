@@ -15,38 +15,67 @@ import Text.Shakespeare.Text
 import System.Directory
 
 import Language.MessagePack.IDL.Syntax
+import Language.MessagePack.IDL.Internal (withDirectory)
 
 data Config
   = Config
-    { configFilePath :: FilePath }
+    { configFilePath :: FilePath
+    , configPackage :: String
+    }
   deriving (Show, Eq)
 
 generate:: Config -> Spec -> IO ()
 generate Config {..} spec = do
-  createDirectoryIfMissing True (takeBaseName configFilePath);
-  setCurrentDirectory (takeBaseName configFilePath);
-  LT.writeFile "__init__.py" $ templ configFilePath [lt|
-|]
-  LT.writeFile "types.py" $ templ configFilePath [lt|
+  withPackage configFilePath configPackage $ do
+    LT.writeFile "types.py" $ templ configFilePath [lt|
 import sys
 import msgpack
 
 #{LT.concat $ map (genTypeDecl "") spec }
 |]
 
-  LT.writeFile "server.tmpl.py" $ templ configFilePath [lt|
+    LT.writeFile "server.tmpl.py" $ templ configFilePath [lt|
 import msgpackrpc
 from types import *
 # write your server here and change file name to server.py
 
 |]
 
-  LT.writeFile "client.py" $ templ configFilePath [lt|
+    LT.writeFile "client.py" $ templ configFilePath [lt|
 import msgpackrpc
 from types import *
 
 #{LT.concat $ map (genClient) spec}
 |]
+    return ()
+
+withPackage :: FilePath -> String -> IO () -> IO ()
+withPackage filePath packageName io =
+    if null cleanedPackageNames
+      then io
+      else do
+        withDirectory packagePath io
+        -- create __init__.py to all directories
+        createInitPys [] cleanedPackageNames
+  where
+    cleanedPackageNames =
+        let packageNames = T.splitOn "." (T.pack packageName)
+            filteredPackages = map cond packageNames
+            removedEmptyPackages = filter (not . T.null) filteredPackages
+         in map T.unpack removedEmptyPackages
+        where
+            validName c =
+                'a' <= c && c <= 'z' ||
+                'A' <= c && c <= 'Z' ||
+                '0' <= c && c <= '9'
+            cond m = T.filter validName m
+    concatPackage file = concat (map (\m -> m ++ ".") cleanedPackageNames) ++ file
+    packagePath = joinPath cleanedPackageNames
+    createInitPys path (x:xs) = do
+        LT.writeFile (path </> x </> "__init__.py") $ templ filePath [lt|
+|]
+        createInitPys (path </> x) xs
+    createInitPys path [] = return ()
 
 genTypeDecl :: String -> Decl -> LT.Text
 

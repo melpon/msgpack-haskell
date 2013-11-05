@@ -44,6 +44,7 @@ data MPIDL
     }
   | Python
     { output_dir :: FilePath
+    , package :: String
     , filepath :: FilePath
     }
   | Perl
@@ -85,6 +86,7 @@ main = do
             }
           , Python
             { output_dir = def
+            , package = "msgpack"
             , filepath = def &= argPos 0
             }
           , Perl
@@ -128,7 +130,7 @@ compile conf = do
             Php.generate (Php.Config filepath) spec
  
           Python {..} -> do
-            Python.generate (Python.Config filepath) spec
+            Python.generate (Python.Config filepath package) spec
  
           Ruby {..} -> do
             Ruby.generate (Ruby.Config filepath modules) spec
