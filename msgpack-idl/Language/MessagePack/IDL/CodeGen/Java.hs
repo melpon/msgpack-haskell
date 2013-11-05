@@ -32,13 +32,16 @@ sanitizePackage text = LT.filter isValidName text
         '0' <= c && c <= '9' ||
         c == '_'
 
+getDirName :: String -> FilePath
+getDirName package = joinPath $ map LT.unpack $ filter (not . LT.null) $ map sanitizePackage $ LT.split (== '.') $ LT.pack $ package
+
 generate :: Config -> Spec -> IO()
 generate config spec = do
   let typeAlias = map genAlias $ filter isMPType spec
-      dirName = joinPath $ map LT.unpack $ filter (not . LT.null) $ map sanitizePackage $ LT.split (== '.') $ LT.pack $ configPackage config
+      dirName = getDirName $ configPackage config
 
-  genTuple config
   createDirectoryIfMissing True dirName
+  genTuple config
   mapM_ (genClient typeAlias config) spec
   mapM_ (genStruct typeAlias config) spec
   mapM_ (genException typeAlias config) spec
@@ -54,7 +57,8 @@ package #{configPackage}
 
 genTuple :: Config -> IO()
 genTuple Config {..} = do
-  LT.writeFile("Tuple.java") $ templ (configFilePath) [lt|
+  let dirName = getDirName configPackage
+  LT.writeFile (dirName </> "Tuple.java") $ templ (configFilePath) [lt|
 package #{configPackage};
 public class Tuple<T, U> {
   public T a;
@@ -76,8 +80,8 @@ genStruct alias Config{..} MPMessage {..} = do
                     | otherwise = ""
       arrayListImport | not $ null [() | TList _ <- map fldType resolvedMsgFields] = [lt|import java.util.ArrayList;|]
                       | otherwise = ""
-      dirName = joinPath $ map LT.unpack $ filter (not . LT.null) $ map sanitizePackage $ LT.split (== '.') $ LT.pack configPackage
-      fileName =  dirName ++ "/" ++ (T.unpack $ formatClassNameT msgName) ++ ".java"
+      dirName = getDirName configPackage
+      fileName =  dirName </> ((T.unpack $ formatClassNameT msgName) ++ ".java")
 
   LT.writeFile fileName $ templ configFilePath [lt|
 package #{configPackage};
@@ -138,7 +142,8 @@ genDecl Field {..} =
 
 genException :: [(T.Text, Type)] -> Config -> Decl -> IO()
 genException alias Config{..} MPException{..} = do
-  LT.writeFile ( (formatClassName $ T.unpack excName) ++ ".java") $ templ configFilePath [lt|
+  let dirName = getDirName configPackage
+  LT.writeFile (dirName </> ((formatClassName $ T.unpack excName) ++ ".java")) $ templ configFilePath [lt|
 package #{configPackage};
 
 import org.msgpack.MessagePack;
@@ -166,8 +171,8 @@ genClient alias Config {..} MPService {..} = do
                     | otherwise = ""
       arrayListImport | not $ null [() | Just (TList _) <- map methodRetType resolvedServiceMethods] = [lt|import java.util.ArrayList;|]
                       | otherwise = ""
-      dirName = joinPath $ map LT.unpack $ filter (not . LT.null) $ map sanitizePackage $ LT.split (== '.') $ LT.pack configPackage
-      fileName =  dirName ++ "/" ++ (T.unpack className) ++ ".java"
+      dirName = getDirName configPackage
+      fileName =  dirName </> (T.unpack className ++ ".java")
 
   LT.writeFile fileName $ templ configFilePath [lt|
 package #{configPackage};
