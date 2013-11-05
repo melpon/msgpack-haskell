@@ -23,10 +23,19 @@ data Config
     }
   deriving (Show, Eq)
 
+sanitizePackage :: LT.Text -> LT.Text
+sanitizePackage text = LT.filter isValidName text
+  where
+    isValidName c =
+        'a' <= c && c <= 'z' ||
+        'A' <= c && c <= 'Z' ||
+        '0' <= c && c <= '9' ||
+        c == '_'
+
 generate :: Config -> Spec -> IO()
 generate config spec = do
   let typeAlias = map genAlias $ filter isMPType spec
-      dirName = joinPath $ map LT.unpack $ LT.split (== '.') $ LT.pack $ configPackage config
+      dirName = joinPath $ map LT.unpack $ filter (not . LT.null) $ map sanitizePackage $ LT.split (== '.') $ LT.pack $ configPackage config
 
   genTuple config
   createDirectoryIfMissing True dirName
@@ -67,7 +76,7 @@ genStruct alias Config{..} MPMessage {..} = do
                     | otherwise = ""
       arrayListImport | not $ null [() | TList _ <- map fldType resolvedMsgFields] = [lt|import java.util.ArrayList;|]
                       | otherwise = ""
-      dirName = joinPath $ map LT.unpack $ LT.split (== '.') $ LT.pack configPackage
+      dirName = joinPath $ map LT.unpack $ filter (not . LT.null) $ map sanitizePackage $ LT.split (== '.') $ LT.pack configPackage
       fileName =  dirName ++ "/" ++ (T.unpack $ formatClassNameT msgName) ++ ".java"
 
   LT.writeFile fileName $ templ configFilePath [lt|
@@ -157,7 +166,7 @@ genClient alias Config {..} MPService {..} = do
                     | otherwise = ""
       arrayListImport | not $ null [() | Just (TList _) <- map methodRetType resolvedServiceMethods] = [lt|import java.util.ArrayList;|]
                       | otherwise = ""
-      dirName = joinPath $ map LT.unpack $ LT.split (== '.') $ LT.pack configPackage
+      dirName = joinPath $ map LT.unpack $ filter (not . LT.null) $ map sanitizePackage $ LT.split (== '.') $ LT.pack configPackage
       fileName =  dirName ++ "/" ++ (T.unpack className) ++ ".java"
 
   LT.writeFile fileName $ templ configFilePath [lt|
